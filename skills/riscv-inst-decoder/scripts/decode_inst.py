@@ -28,6 +28,17 @@ FIELD_BITS = {
     "RS1":         lambda v: (v >> 15) & 0x1f,
     "RS2":         lambda v: (v >> 20) & 0x1f,
     "RD":          lambda v: (v >> 7) & 0x1f,
+    "FS2":         lambda v: (v >> 20) & 0x1f,
+    "FS3":         lambda v: (v >> 27) & 0x1f,
+    "FUNCT12":     lambda v: (v >> 20) & 0xfff,
+    "RC1":         lambda v: (v >> 7) & 0x1f,
+    "RC2":         lambda v: (v >> 2) & 0x1f,
+    "RP1":         lambda v: (v >> 7) & 0x7,
+    "RP2":         lambda v: (v >> 2) & 0x7,
+    "FC1":         lambda v: (v >> 7) & 0x1f,
+    "FC2":         lambda v: (v >> 2) & 0x1f,
+    "FP2":         lambda v: (v >> 2) & 0x7,
+    "JTINDEX5TO7": lambda v: (v >> 7) & 0x7,
     "COPCODE":     lambda v: (v >> 13) & 0x7,
     "CFUNCT6LOW3": lambda v: (v >> 10) & 0x7,
     "CFUNCT1":     lambda v: (v >> 12) & 0x1,
@@ -83,6 +94,11 @@ BIT_RANGES = {
     "QUADRANT":    (1, 0),   "OPCODE5":     (6, 2),
     "FUNCT3":      (14, 12), "FUNCT7":      (31, 25), "FUNCT2":      (26, 25),
     "RS1":         (19, 15), "RS2":         (24, 20), "RD":          (11, 7),
+    "FS2":         (24, 20), "FS3":         (31, 27), "FUNCT12":     (31, 20),
+    "RC1":         (11, 7),  "RC2":         (6, 2),
+    "RP1":         (9, 7),   "RP2":         (4, 2),
+    "FC1":         (11, 7),  "FC2":         (6, 2),   "FP2":         (4, 2),
+    "JTINDEX5TO7": (9, 7),
     "COPCODE":     (15, 13), "CFUNCT6LOW3": (12, 10),
     "CFUNCT1":     (12, 12), "CFUNCT1BIT6": (6, 6),
     "CFUNCT2HIGH": (11, 10), "CFUNCT2LOW":  (6, 5),   "CFUNCT2MID":  (9, 8),
@@ -306,9 +322,13 @@ def decode_instruction(inst, tree):
 
         matched_target = None
         matched_child = None
+        default_target = None
         for child in node.get("children", []):
             if child["kind"] == "case":
                 for cv in child["case_values"]:
+                    if cv == "default":
+                        default_target = child["target"]
+                        continue
                     try:
                         if value == int(cv, 0):
                             matched_child = child
@@ -318,6 +338,8 @@ def decode_instruction(inst, tree):
                         pass
                 if matched_target:
                     break
+        if matched_target is None and default_target is not None:
+            matched_target = default_target
 
         if matched_target is None:
             # record the failed field in field_trace
