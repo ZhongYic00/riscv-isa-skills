@@ -1,6 +1,0 @@
-[submodule "riscv-unified-db"]
-	path = skills/csr-parser/riscv-unified-db
-	url = https://github.com/riscv-software-src/riscv-unified-db
-[submodule "riscv-config"]
-	path = skills/csr-parser/riscv-config
-	url = https://github.com/riscv-software-src/riscv-config.git
