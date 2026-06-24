@@ -60,6 +60,8 @@ def main(argv=None):
         parser.add_argument("--config", help="Path to riscv-config YAML (e.g., rv64i_isa_checked.yaml) for CSR type info (WARL/WLRL)")
         parser.add_argument("--xlen", type=int, default=64, help="XLEN (default 64)")
         parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+        parser.add_argument("--cache-dir", default=None, help="Directory for pickle cache (default: same as --spec)")
+        parser.add_argument("--no-cache", action="store_true", help="Force re-parsing, skip cache")
 
     dec = sub.add_parser("decode", help="Decode CSR value into bitfields")
     add_common(dec)
@@ -79,8 +81,10 @@ def main(argv=None):
 
     args = p.parse_args(argv)
 
-    parser = UDBParser(args.spec, riscv_config_yaml=args.config if hasattr(args, 'config') else None)
-    csrs = parser.load_all()
+    cache_dir = getattr(args, 'cache_dir', None)
+    force_reload = getattr(args, 'no_cache', False)
+    parser = UDBParser(args.spec, riscv_config_yaml=args.config if hasattr(args, 'config') else None, cache_dir=cache_dir)
+    csrs = parser.load_all(force_reload=force_reload)
     csr = parser.get(args.csr)
     if csr is None:
         print(f"CSR '{args.csr}' not found under {args.spec}. Available count: {len(csrs)}", file=sys.stderr)

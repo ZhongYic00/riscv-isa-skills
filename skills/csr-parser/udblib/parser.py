@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import glob
 import json
+import pickle
+import hashlib
 import yaml
 import re
 from typing import List, Dict, Optional, Any, Tuple
@@ -127,14 +129,56 @@ class UDBParser:
     Loads CSR definitions from a directory (riscv-unified-db/spec/csrs).
     It is tolerant to multiple YAML/JSON schema variants.
     Can also load riscv-config YAML to enrich CSR type information (WARL/WLRL etc.)
+    Supports pickle caching for fast reload.
     """
-    def __init__(self, csrs_dir: str, riscv_config_yaml: Optional[str] = None):
-        self.csrs_dir = csrs_dir
-        self.riscv_config_yaml = riscv_config_yaml
+    def __init__(self, csrs_dir: str, riscv_config_yaml: Optional[str] = None, cache_dir: Optional[str] = None):
+        self.csrs_dir = os.path.abspath(csrs_dir)
+        self.riscv_config_yaml = os.path.abspath(riscv_config_yaml) if riscv_config_yaml else None
+        self.cache_dir = cache_dir
         self._by_name: Dict[str, CSRDefinition] = {}
         self._config_data: Optional[Dict[str, Any]] = None
 
-    def load_all(self) -> Dict[str, CSRDefinition]:
+    def _cache_path(self) -> str:
+        h = hashlib.sha256(self.csrs_dir.encode()).hexdigest()[:16]
+        name = f"csr_cache_{h}.pkl"
+        if self.cache_dir:
+            os.makedirs(self.cache_dir, exist_ok=True)
+            return os.path.join(self.cache_dir, name)
+        return os.path.join(self.csrs_dir, name)
+
+    def _cache_valid(self, cache_path: str) -> bool:
+        if not os.path.exists(cache_path):
+            return False
+        cache_mtime = os.path.getmtime(cache_path)
+        patterns = [
+            os.path.join(self.csrs_dir, "*.yml"),
+            os.path.join(self.csrs_dir, "*.yaml"),
+            os.path.join(self.csrs_dir, "*.json"),
+        ]
+        files: List[str] = []
+        for p in patterns:
+            files.extend(glob.glob(p))
+        for fn in files:
+            if os.path.getmtime(fn) > cache_mtime:
+                return False
+        if self.riscv_config_yaml and os.path.exists(self.riscv_config_yaml):
+            if os.path.getmtime(self.riscv_config_yaml) > cache_mtime:
+                return False
+        return True
+
+    def load_all(self, force_reload: bool = False) -> Dict[str, CSRDefinition]:
+        cache_path = self._cache_path()
+        if not force_reload and self._cache_valid(cache_path):
+            try:
+                with open(cache_path, "rb") as f:
+                    data = pickle.load(f)
+                self._by_name = data["by_name"]
+                self._config_data = data.get("config_data")
+                print(f"Loaded {len(self._by_name)} CSR definitions from cache ({cache_path}).")
+                return self._by_name
+            except Exception:
+                pass
+
         patterns = [
             os.path.join(self.csrs_dir, "*.yml"),
             os.path.join(self.csrs_dir, "*.yaml"),
@@ -189,6 +233,15 @@ class UDBParser:
         print(f"Loaded {len(self._by_name)} CSR definitions from {len(files)} files.")
         # print(f"CSR names: {', '.join(sorted(self._by_name.keys()))}")
         # print(f"CSR field names: {', '.join(sorted({f.name for d in self._by_name.values() for f in d.fields}))}")
+
+        # Save cache
+        try:
+            with open(cache_path, "wb") as f:
+                pickle.dump({"by_name": self._by_name, "config_data": self._config_data}, f)
+            print(f"Saved cache to {cache_path}.")
+        except Exception:
+            pass
+
         return self._by_name
 
     def _load_riscv_config(self):

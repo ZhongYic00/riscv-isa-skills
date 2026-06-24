@@ -1,3 +1,19 @@
+---
+name: spike-isa-internals
+description: |
+  Investigate RISC-V instruction execution details by combining rr/Spike replay
+  with interactive gdb in a tmux session. Use when the user needs to understand
+  what a specific instruction does at the microarchitectural level — CSR reads/writes,
+  trap behavior, permission checks, register/memory side effects.
+
+  Key dependency: rr record/replay must work. If rr fails, stop immediately.
+  Requires: tmux skill for interactive gdb session.
+
+  Trigger phrases: "spike", "instruction execution", "csr debug", "rrspike",
+  "goto instruction", "what happened at index", "instruction behavior",
+  "spike internal", "execute.cc", "processor_t::step".
+---
+
 # Skill: rrspike-investigate
 
 目标：在 tmux 会话中使用 `rrspike goto` 抵达目标指令，然后由 agent 主动在交互式 gdb 会话中探索指令执行细节，给出证据化结论。

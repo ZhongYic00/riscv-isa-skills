@@ -1,4 +1,3 @@
-```markdown
 UDb-CSR: lightweight Python tool to parse riscv-unified-db CSR definitions and decode CSR values/diffs
 ================================================================================
 
@@ -9,34 +8,37 @@ Quick summary
 - Decode a CSR value into its bitfields.
 - Given an XOR mask (before ^ after), list which fields changed (and which bit positions inside them changed).
 - CLI with argparse, optional JSON output.
+- Supports pickle caching for fast reload.
 
 Requirements
 ------------
 - Python 3.8+
 - pyyaml (`pip install pyyaml`)
+- riscv-unified-db and riscv-config clones (see below)
 
 Files
 -----
-- udblib/parser.py       - UDB parser and data models, riscv-config integration
+- udblib/parser.py       - UDB parser and data models, riscv-config integration, pickle cache
 - udblib/decoder.py      - Decoder utilities
-- scripts/udb_csr_cli.py - CLI entrypoint (uses argparse)
+- scripts_udb_csr_cli.py - CLI entrypoint (uses argparse)
 
-Submodules
-----------
-- riscv-unified-db       - RISC-V Unified Database for CSR definitions
-- riscv-config           - RISC-V Config for CSR type information (WARL/WLRL/etc)
+Data Dependencies
+-----------------
+CSR specs and config are **not** included as submodules. Point --spec / --config to local clones:
+
+  git clone https://github.com/riscv-software-src/riscv-unified-db ~/riscv-sources/spec/riscv-unified-db
+  git clone https://github.com/riscv-software-src/riscv-config ~/riscv-sources/spec/riscv-config
 
 Usage examples
 --------------
-Clone and initialize submodules:
-  git clone --recurse-submodules https://github.com/ZhongYic00/riscv-parse-csr
-  # or if already cloned:
-  git submodule update --init riscv-unified-db riscv-config
-
 Decode a value:
   python scripts_udb_csr_cli.py decode \
-    --spec riscv-unified-db/spec/std/isa/csr \
+    --spec ~/riscv-sources/spec/riscv-unified-db/spec/std/isa/csr \
+    --config ~/riscv-sources/spec/riscv-config/examples/rv64i_isa_checked.yaml \
     --csr mstatus --value 0x1888
+
+The first run parses YAML/JSON files; subsequent runs load a pickle cache automatically.
+Use --no-cache to force re-parsing.
 
 Decode with CSR type information (WARL/WLRL/etc):
   python scripts_udb_csr_cli.py decode \

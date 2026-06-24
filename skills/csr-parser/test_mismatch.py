@@ -25,8 +25,10 @@ def test_csr_mismatch():
     }
     
     # Initialize parser and decoder
-    spec_path = "riscv-unified-db/spec/std/isa/csr"
-    config_yaml = "riscv-config/examples/rv64i_isa_checked.yaml"
+    import os
+    home = os.path.expanduser("~")
+    spec_path = f"{home}/riscv-sources/spec/riscv-unified-db/spec/std/isa/csr"
+    config_yaml = f"{home}/riscv-sources/spec/riscv-config/examples/rv64i_isa_checked.yaml"
     parser = UDBParser(spec_path, riscv_config_yaml=config_yaml)
     parser.load_all()
     decoder = Decoder(xlen=64)
