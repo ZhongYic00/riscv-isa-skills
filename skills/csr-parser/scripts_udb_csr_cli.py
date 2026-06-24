@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # CLI entrypoint: argparse with subcommands decode / diff
+import os
 import argparse
 import sys
 import json
@@ -56,11 +57,11 @@ def main(argv=None):
 
     # common args
     def add_common(parser):
-        parser.add_argument("--spec", required=True, help="Path to riscv-unified-db spec/csrs directory")
-        parser.add_argument("--config", help="Path to riscv-config YAML (e.g., rv64i_isa_checked.yaml) for CSR type info (WARL/WLRL)")
+        parser.add_argument("--spec", help="Path to riscv-unified-db spec/csrs directory (omit to load from cached pkl)")
+        parser.add_argument("--config", help="Path to riscv-config YAML for CSR type info (WARL/WLRL)")
         parser.add_argument("--xlen", type=int, default=64, help="XLEN (default 64)")
         parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
-        parser.add_argument("--cache-dir", default=None, help="Directory for pickle cache (default: same as --spec)")
+        parser.add_argument("--cache-dir", default=None, help="Directory for pickle cache (default: ~/.cache/udb-csr)")
         parser.add_argument("--no-cache", action="store_true", help="Force re-parsing, skip cache")
 
     dec = sub.add_parser("decode", help="Decode CSR value into bitfields")
@@ -81,10 +82,17 @@ def main(argv=None):
 
     args = p.parse_args(argv)
 
-    cache_dir = getattr(args, 'cache_dir', None)
+    cache_dir = getattr(args, 'cache_dir', None) or os.path.expanduser("~/.cache/udb-csr")
     force_reload = getattr(args, 'no_cache', False)
-    parser = UDBParser(args.spec, riscv_config_yaml=args.config if hasattr(args, 'config') else None, cache_dir=cache_dir)
-    csrs = parser.load_all(force_reload=force_reload)
+    spec = getattr(args, 'spec', None)
+    if force_reload and not spec:
+        print("--no-cache requires --spec to re-parse from source.", file=sys.stderr)
+        sys.exit(1)
+    parser = UDBParser(spec, riscv_config_yaml=getattr(args, 'config', None), cache_dir=cache_dir)
+    if spec:
+        csrs = parser.load_all(force_reload=force_reload)
+    else:
+        csrs = parser.load_cached_only()
     csr = parser.get(args.csr)
     if csr is None:
         print(f"CSR '{args.csr}' not found under {args.spec}. Available count: {len(csrs)}", file=sys.stderr)

@@ -8,6 +8,7 @@ import pickle
 import hashlib
 import yaml
 import re
+import sys
 from typing import List, Dict, Optional, Any, Tuple
 
 class CSRField:
@@ -129,26 +130,27 @@ class UDBParser:
     Loads CSR definitions from a directory (riscv-unified-db/spec/csrs).
     It is tolerant to multiple YAML/JSON schema variants.
     Can also load riscv-config YAML to enrich CSR type information (WARL/WLRL etc.)
-    Supports pickle caching for fast reload.
+    Supports pickle caching for fast reload without --spec.
     """
-    def __init__(self, csrs_dir: str, riscv_config_yaml: Optional[str] = None, cache_dir: Optional[str] = None):
-        self.csrs_dir = os.path.abspath(csrs_dir)
+    def __init__(self, csrs_dir: Optional[str] = None, riscv_config_yaml: Optional[str] = None, cache_dir: Optional[str] = None):
+        self.csrs_dir = os.path.abspath(csrs_dir) if csrs_dir else None
         self.riscv_config_yaml = os.path.abspath(riscv_config_yaml) if riscv_config_yaml else None
-        self.cache_dir = cache_dir
+        self.cache_dir = cache_dir or os.path.expanduser("~/.cache/udb-csr")
         self._by_name: Dict[str, CSRDefinition] = {}
         self._config_data: Optional[Dict[str, Any]] = None
 
     def _cache_path(self) -> str:
-        h = hashlib.sha256(self.csrs_dir.encode()).hexdigest()[:16]
-        name = f"csr_cache_{h}.pkl"
-        if self.cache_dir:
-            os.makedirs(self.cache_dir, exist_ok=True)
-            return os.path.join(self.cache_dir, name)
-        return os.path.join(self.csrs_dir, name)
+        h = "global"
+        if self.csrs_dir:
+            h = hashlib.sha256(self.csrs_dir.encode()).hexdigest()[:16]
+        os.makedirs(self.cache_dir, exist_ok=True)
+        return os.path.join(self.cache_dir, f"csr_cache_{h}.pkl")
 
     def _cache_valid(self, cache_path: str) -> bool:
         if not os.path.exists(cache_path):
             return False
+        if not self.csrs_dir:
+            return True
         cache_mtime = os.path.getmtime(cache_path)
         patterns = [
             os.path.join(self.csrs_dir, "*.yml"),
@@ -243,6 +245,33 @@ class UDBParser:
             pass
 
         return self._by_name
+
+    def _find_cache(self) -> Optional[str]:
+        if not os.path.isdir(self.cache_dir):
+            return None
+        candidates = sorted(
+            f for f in os.listdir(self.cache_dir)
+            if f.startswith("csr_cache_") and f.endswith(".pkl")
+        )
+        if candidates:
+            return os.path.join(self.cache_dir, candidates[-1])
+        return None
+
+    def load_cached_only(self) -> Dict[str, CSRDefinition]:
+        cache_path = self._find_cache()
+        if not cache_path:
+            print("No cached CSR definitions found. Run with --spec first to parse and cache.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            with open(cache_path, "rb") as f:
+                data = pickle.load(f)
+            self._by_name = data["by_name"]
+            self._config_data = data.get("config_data")
+            print(f"Loaded {len(self._by_name)} CSR definitions from cache ({cache_path}).")
+            return self._by_name
+        except Exception as e:
+            print(f"Failed to load cache: {e}", file=sys.stderr)
+            sys.exit(1)
 
     def _load_riscv_config(self):
         """Load riscv-config YAML and enrich CSR definitions with type information (WARL/WLRL etc.)"""
