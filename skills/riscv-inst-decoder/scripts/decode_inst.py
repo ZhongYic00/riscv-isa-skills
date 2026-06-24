@@ -261,7 +261,9 @@ def load_tree(path=None):
             return json.load(f)
     candidates = []
     try:
-        candidates.append(os.path.join(os.path.dirname(__file__), "decode_tree.json"))
+        script_dir = os.path.dirname(__file__)
+        candidates.append(os.path.join(script_dir, "decode_tree.json"))
+        candidates.append(os.path.join(script_dir, "..", "references", "decode_tree.json"))
     except NameError:
         pass
     candidates.append("decode_tree.json")

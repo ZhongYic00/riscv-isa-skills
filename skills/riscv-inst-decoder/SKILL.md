@@ -24,13 +24,13 @@ decode tree. The decode tree is pre-extracted and bundled as
 
 | file | purpose |
 |------|---------|
-| `decode_tree.json` | Pre-generated decode tree (~637 KB, RV64GC + V) |
-| `decode_inst.py`   | Standalone decoder script (stdlib only) |
+| `references/decode_tree.json` | Pre-generated decode tree (~637 KB, RV64GC + V) |
+| `scripts/decode_inst.py`      | Standalone decoder script (stdlib only) |
 
 ## Quick start
 
 ```bash
-python3 /path/to/skill/decode_inst.py 0x9e053057
+python3 /path/to/skill/scripts/decode_inst.py 0x9e053057
 ```
 
 Output:
@@ -51,12 +51,14 @@ Output:
 Multiple instructions:
 
 ```bash
-python3 /path/to/skill/decode_inst.py 0x9e053057 0x0007879b
+python3 /path/to/skill/scripts/decode_inst.py 0x9e053057 0x0007879b
 ```
 
 ## Python API
 
 ```python
+import sys
+sys.path.insert(0, "/path/to/skill/scripts")
 from decode_inst import load_tree, make_inst, decode_instruction
 
 tree = load_tree()            # loads bundled decode_tree.json
