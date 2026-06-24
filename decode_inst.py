@@ -108,10 +108,128 @@ BIT_RANGES = {
     "PRED":        (27, 24), "SUCC":        (23, 20),
 }
 
+# ── operand fields per instruction format ────────────────────────────────
+# (field_name, msb, lsb)  — only standard positions, derived from RISC-V spec
+FMT_OPERANDS = {
+    # scalar arithmetic
+    "IOp":          [("rd", 11, 7), ("rs1", 19, 15), ("imm12", 31, 20)],
+    "ROp":          [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20)],
+    "UOp":          [("rd", 11, 7), ("imm20", 31, 12)],
+    "JOp":          [("rd", 11, 7), ("imm", 31, 12)],
+    "Jump":         [("rd", 11, 7), ("rs1", 19, 15), ("imm12", 31, 20)],
+    # load / store
+    "Load":         [("rd", 11, 7), ("rs1", 19, 15), ("imm12", 31, 20)],
+    "Store":        [("rs1", 19, 15), ("rs2", 24, 20),
+                     ("imm_lo", 11, 7), ("imm_hi", 31, 25)],
+    "BOp":          [("rs1", 19, 15), ("rs2", 24, 20),
+                     ("imm", 31, 25)],
+    # CSR / system
+    "CSROp":        [("rd", 11, 7), ("csr", 31, 20), ("rs1", 19, 15)],
+    "SystemOp":     [("rd", 11, 7), ("rs1", 19, 15)],
+    "FenceOp":      [("rd", 11, 7), ("rs1", 19, 15), ("pred", 27, 24), ("succ", 23, 20)],
+    # float
+    "FPROp":        [("fd", 11, 7), ("fs1", 19, 15), ("fs2", 24, 20), ("rm", 14, 12)],
+    # AMO
+    "AtomicMemOp":  [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20),
+                     ("aq", 26, 26), ("rl", 25, 25)],
+    "LoadReserved": [("rd", 11, 7), ("rs1", 19, 15), ("aq", 26, 26), ("rl", 25, 25)],
+    "StoreCond":    [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20),
+                     ("aq", 26, 26), ("rl", 25, 25)],
+    # hypervisor
+    "HyperLoad":    [("rd", 11, 7), ("rs1", 19, 15)],
+    "HyperStore":   [("rs1", 19, 15), ("rs2", 24, 20)],
+    # Zb* bit-manipulation
+    "BSOp":         [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20)],
+    "CBMOp":        [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20)],
+    # M5
+    "M5Op":         [],
+    # compressed — operand fields are at different bit offsets
+    "CIOp":         [("rd_rs1", 11, 7), ("imm", 12, 12)],
+    "CJOp":         [("rd_rs1", 11, 7), ("imm", 12, 12)],
+    "CBOp":         [("rd_rs1", 11, 7), ("imm", 12, 12)],
+    "CROp":         [],
+    "CJump":        [("imm", 12, 2)],
+    "CIAddi4spnOp": [("rd", 4, 2), ("rs1", 9, 7)],
+    "CompressedLoad":  [("rd", 4, 2), ("rs1", 9, 7)],
+    "CompressedStore": [("rs1", 9, 7), ("rs2", 4, 2)],
+    "CompressedROp":   [("rd", 4, 2), ("rs1", 9, 7), ("rs2", 4, 2)],
+    # Zcm*
+    "CmJalt":       [],
+    "CmMva01s":     [],
+    "CmMvsa01":     [],
+    "CmPop":        [("rd", 11, 7)],
+    "CmPush":       [],
+    # vector arithmetic (most formats share vd/vs2/vs1)
+    "VectorIntFormat":   [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorFloatFormat": [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorIntMaskFormat":     [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorFloatMaskFormat":   [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorIntWideningFormat": [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorIntNarrowingFormat":[("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorFloatWideningFormat":[("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorFloatNarrowingCvtFormat": [("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorFloatCvtFormat":  [("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorIntVxsatFormat":  [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorMaskFormat":      [("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorReduceIntFormat": [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorReduceIntWideningFormat": [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorReduceFloatFormat":       [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorReduceFloatWideningFormat":[("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorGatherFormat":    [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorSlideUpFormat":   [("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorSlideDownFormat": [("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorSlideUpVIFormat": [("vd", 11, 7), ("vs2", 24, 20), ("simm", 19, 15)],
+    "VectorSlideDownVIFormat":[("vd", 11, 7), ("vs2", 24, 20), ("simm", 19, 15)],
+    "VectorSlide1UpFormat":  [("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorSlide1DownFormat":[("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorCompressFormat":  [("vd", 11, 7), ("vs2", 24, 20), ("vs1", 19, 15)],
+    "VectorIntExtFormat":    [("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorNonSplitFormat":  [("vd", 11, 7), ("vs2", 24, 20)],
+    "VMvWholeFormat":        [("vd", 11, 7), ("vs2", 24, 20)],
+    "VectorFloatSlideUpFormat":   [("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorFloatSlideDownFormat": [("vd", 11, 7), ("vs2", 24, 20), ("rs1", 19, 15)],
+    "VectorFloatWideningCvtFormat":[("vd", 11, 7), ("vs2", 24, 20)],
+    "ViotaFormat":         [("vd", 11, 7), ("vs2", 24, 20)],
+    "Vector1Vs1RdMaskFormat":  [("vd", 11, 7), ("vs2", 24, 20)],
+    "Vector1Vs1VdMaskFormat":  [("vd", 11, 7), ("vs2", 24, 20)],
+    # vector load / store
+    "VleOp":        [("vd", 11, 7), ("rs1", 19, 15)],
+    "VlmOp":        [("vd", 11, 7), ("rs1", 19, 15)],
+    "VlSegOp":      [("vd", 11, 7), ("rs1", 19, 15)],
+    "VlWholeOp":    [("vd", 11, 7), ("rs1", 19, 15)],
+    "VlIndexOp":    [("vd", 11, 7), ("rs1", 19, 15), ("vs2", 24, 20)],
+    "VlStrideOp":   [("vd", 11, 7), ("rs1", 19, 15), ("vs2", 24, 20)],
+    "VseOp":        [("vs3", 11, 7), ("rs1", 19, 15)],
+    "VsmOp":        [("vs3", 11, 7), ("rs1", 19, 15)],
+    "VsSegOp":      [("vs3", 11, 7), ("rs1", 19, 15)],
+    "VsWholeOp":    [("vs3", 11, 7), ("rs1", 19, 15)],
+    "VsIndexOp":    [("vs3", 11, 7), ("rs1", 19, 15), ("vs2", 24, 20)],
+    "VsStrideOp":   [("vs3", 11, 7), ("rs1", 19, 15), ("vs2", 24, 20)],
+    # vector config
+    "VConfOp":      [("rd", 11, 7), ("rs1", 19, 15),
+                     ("zimm", 29, 20), ("vlmul", 34, 32), ("vsew", 37, 35)],
+}
+
 
 def extract_field(inst, field):
     fn = FIELD_BITS.get(field)
     return fn(inst) if fn else None
+
+
+def _infer_format(node):
+    """Walk subtree for the first instruction leaf with a real format."""
+    if node["kind"] == "instruction":
+        f = node.get("format")
+        if f and f != "Unknown":
+            return f
+    for child in node.get("children", []):
+        if child["kind"] == "case":
+            f = _infer_format(child["target"])
+            if f:
+                return f
+    if "target" in node:
+        return _infer_format(node["target"])
+    return None
 
 
 def _collect_subsets(node):
@@ -200,6 +318,10 @@ def decode_instruction(inst, tree):
                     break
 
         if matched_target is None:
+            # record the failed field in field_trace
+            msb, lsb = BIT_RANGES.get(field, (None, None))
+            field_trace.append((field, value, msb, lsb))
+
             valid = []
             for child in node.get("children", []):
                 if child["kind"] == "case":
@@ -210,7 +332,18 @@ def decode_instruction(inst, tree):
                     hexv.append(f"0x{int(v, 0):x}")
                 except ValueError:
                     hexv.append(v)
-            info = {"field": field, "value": f"0x{value:x}", "valid": hexv}
+
+            # guess format from sibling instruction leaves
+            guessed_fmt = "Unknown"
+            for child in node.get("children", []):
+                if child["kind"] == "case":
+                    f = _infer_format(child["target"])
+                    if f:
+                        guessed_fmt = f
+                        break
+
+            info = {"field": field, "value": f"0x{value:x}", "valid": hexv,
+                    "format": guessed_fmt}
             if field == "SIMM3":
                 info["hint"] = ("SIMM3 encodes NREG-1; "
                                 "legal: 0,1,3,7 (NREG=1,2,4,8)")
@@ -218,7 +351,7 @@ def decode_instruction(inst, tree):
                 info["hint"] = "LUMOP=0xb is vlm (mask load); WIDTH must be 000"
             path.append(f"{field}=0x{value:x} \u2717 not in {hexv}")
             return {"kind": "instruction", "name": "illegal",
-                    "format": "Unknown"}, path, info, field_trace
+                    "format": guessed_fmt}, path, info, field_trace
 
         sub = _collect_subsets(matched_target)
         label = "/".join(sorted(sub)) if sub and len(sub) <= MAX_LABEL_COUNT else None
@@ -236,7 +369,7 @@ def decode_instruction(inst, tree):
         node = matched_target
 
 
-def format_instruction_binary(inst_32, field_trace, info=None):
+def format_instruction_binary(inst_32, field_trace, result, info=None):
     """Produce a compact one-line binary breakdown of the instruction."""
     bits = inst_32
 
@@ -253,13 +386,13 @@ def format_instruction_binary(inst_32, field_trace, info=None):
                 fail_label = fld
                 break
 
-    # Fill gaps with standard register operand fields
-    for fld, fmsb, flsb in [("VS2", 24, 20), ("VS1", 19, 15), ("VD", 11, 7)]:
-        overlaps = any(msb >= flsb and lsb <= fmsb for msb, lsb in shown)
-        if not overlaps:
+    # Add format-specific operand fields (from FMT_OPERANDS)
+    fmt = result.get("format", "") or (info or {}).get("format", "")
+    for fld, fmsb, flsb in FMT_OPERANDS.get(fmt, []):
+        if all(msb > fmsb or lsb < flsb for msb, lsb in shown):
             w = fmsb - flsb + 1
-            val = (bits >> flsb) & ((1 << w) - 1)
-            shown[(fmsb, flsb)] = (fld, val)
+            raw = (bits >> flsb) & ((1 << w) - 1)
+            shown[(fmsb, flsb)] = (fld, raw)
 
     # Build the binary string sorted MSB → LSB
     parts = []
@@ -267,7 +400,6 @@ def format_instruction_binary(inst_32, field_trace, info=None):
         w = msb - lsb + 1
         raw = (bits >> lsb) & ((1 << w) - 1)
         bin_str = f"{raw:0{w}b}"
-        hex_str = f"0x{raw:x}"
         marker = " \u2717" if fld == fail_label else ""
         parts.append(f"{bin_str}<{fld}{marker}>")
 
@@ -300,7 +432,7 @@ def main():
             print(f"    -> {step}")
 
         # binary breakdown
-        binary = format_instruction_binary(raw, field_trace, info)
+        binary = format_instruction_binary(raw, field_trace, result, info)
         print(f"    = {binary}")
 
         if result["name"] == "illegal":
