@@ -1,0 +1,218 @@
+--- gem5/src/arch/isa_parser/isa_parser.py.bak	2026-06-23
++++ gem5/src/arch/isa_parser/isa_parser.py	2026-06-24
+@@ -38,6 +38,7 @@
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ 
+ import os
++import json
+ import re
+ import sys
+ import traceback
+@@ -271,6 +272,58 @@
+ # to allow explicit default clauses to override default default clauses.
+ 
+ 
++class DecodeTreeNode:
++    """Represents a node in the decode tree extracted from the ISA grammar."""
++    def __init__(self, kind, **kwargs):
++        self.kind = kind
++        self.__dict__.update(kwargs)
++
++    def to_dict(self):
++        d = {"kind": self.kind}
++        for k, v in sorted(self.__dict__.items()):
++            if k == "kind":
++                continue
++            if isinstance(v, DecodeTreeNode):
++                d[k] = v.to_dict()
++            elif isinstance(v, list):
++                d[k] = [
++                    item.to_dict() if isinstance(item, DecodeTreeNode) else item
++                    for item in v
++                ]
++            else:
++                d[k] = v
++        return d
++
++
++def _collect_subsets(node):
++    """Recursively collect all subset/format values from instruction descendants."""
++    subsets = set()
++    if node.kind == 'instruction':
++        if hasattr(node, 'subset') and node.subset:
++            subsets.add(node.subset)
++        elif hasattr(node, 'format') and node.format and node.format != 'Unknown':
++            subsets.add(node.format)
++    if hasattr(node, 'children'):
++        for child in node.children:
++            if child.kind == 'case':
++                subsets.update(_collect_subsets(child.target))
++    if hasattr(node, 'target'):
++        subsets.update(_collect_subsets(node.target))
++    return subsets
++
++
++def _collect_subset_tree(node):
++    """Collect subset info grouped by direct children case nodes.
++    Returns list of (case_value, subset_set) tuples."""
++    result = []
++    if node.kind == 'block' and hasattr(node, 'children'):
++        for child in node.children:
++            if child.kind == 'case':
++                subsets = _collect_subsets(child.target)
++                result.append((child.case_values, subsets))
++    return result
++
++
+ class GenCode:
+     # Constructor.
+     def __init__(
+@@ -281,6 +334,7 @@
+         exec_output="",
+         decode_block="",
+         has_decode_default=False,
++        tree_node=None,
+     ):
+         self.parser = parser
+         self.header_output = header_output
+@@ -288,6 +342,7 @@
+         self.exec_output = exec_output
+         self.decode_block = decode_block
+         self.has_decode_default = has_decode_default
++        self.tree_node = tree_node
+ 
+     # Write these code chunks out to the filesystem.  They will be properly
+     # interwoven by the write_top_level_files().
+@@ -304,6 +359,20 @@
+     # Override '+' operator: generate a new GenCode object that
+     # concatenates all the individual strings in the operands.
+     def __add__(self, other):
++        new_tree = None
++        if self.tree_node is not None and other.tree_node is not None:
++            if isinstance(self.tree_node, list) and isinstance(other.tree_node, list):
++                new_tree = self.tree_node + other.tree_node
++            elif isinstance(self.tree_node, list):
++                new_tree = self.tree_node + [other.tree_node]
++            elif isinstance(other.tree_node, list):
++                new_tree = [self.tree_node] + other.tree_node
++            else:
++                new_tree = [self.tree_node, other.tree_node]
++        elif self.tree_node is not None:
++            new_tree = self.tree_node
++        elif other.tree_node is not None:
++            new_tree = other.tree_node
+         return GenCode(
+             self.parser,
+             self.header_output + other.header_output,
+@@ -311,6 +380,7 @@
+             self.exec_output + other.exec_output,
+             self.decode_block + other.decode_block,
+             self.has_decode_default or other.has_decode_default,
++            new_tree,
+         )
+ 
+     # Prepend a string (typically a comment) to all the strings.
+@@ -586,6 +656,7 @@
+         )
+ 
+         self.maxMiscDestRegs = 0
++        self.decode_trees = []
+ 
+     def operandsRE(self):
+         if not self._operandsRE:
+@@ -1266,8 +1337,9 @@
+             % self,
+             "}",
+         )
+-
+         codeObj.emit()
++        if codeObj.tree_node is not None:
++            self.decode_trees.append(codeObj.tree_node)
+ 
+     def p_decode_block(self, t):
+         "decode_block : DECODE ID opt_default LBRACE decode_stmt_list RBRACE"
+@@ -1277,6 +1349,18 @@
+         # default statement in decode_stmt_list
+         if not codeObj.has_decode_default:
+             codeObj += default_defaults
++        field = t[2]
++        stmt_tree = codeObj.tree_node
++        if stmt_tree is not None:
++            if not isinstance(stmt_tree, list):
++                stmt_tree = [stmt_tree]
++            subsets = set()
++            for stmt in stmt_tree:
++                subsets.update(_collect_subsets(stmt))
++            codeObj.tree_node = DecodeTreeNode(
++                kind="block", field=field, children=stmt_tree,
++                subset=sorted(list(subsets))
++            )
+         codeObj.wrap_decode_block("switch (%s) {\n" % t[2], "}\n")
+         t[0] = codeObj
+ 
+@@ -1362,8 +1446,12 @@
+         "decode_stmt : case_list COLON decode_block"
+         case_list = t[1]
+         codeObj = t[3]
+-        # just wrap the decoding code from the block as a case in the
+-        # outer switch statement.
++        block_tree = codeObj.tree_node
++        if block_tree is not None:
++            clean_cases = [cv.strip().replace("case ", "", 1).replace(":", "").strip() for cv in case_list]
++            codeObj.tree_node = DecodeTreeNode(
++                kind="case", case_values=clean_cases, target=block_tree
++            )
+         codeObj.wrap_decode_block(
+             f"\n{''.join(case_list)}\n", "GEM5_UNREACHABLE;\n"
+         )
+@@ -1375,6 +1463,12 @@
+         "decode_stmt : case_list COLON inst SEMI"
+         case_list = t[1]
+         codeObj = t[3]
++        inst_tree = codeObj.tree_node
++        if inst_tree is not None:
++            clean_cases = [cv.strip().replace("case ", "", 1).replace(":", "").strip() for cv in case_list]
++            codeObj.tree_node = DecodeTreeNode(
++                kind="case", case_values=clean_cases, target=inst_tree
++            )
+         codeObj.wrap_decode_block(f"\n{''.join(case_list)}", "break;\n")
+         codeObj.has_decode_default = case_list == ["default:"]
+         t[0] = codeObj
+@@ -1427,6 +1521,18 @@
+         args = re.sub("^//", "", args)
+         comment = f"\n// {currentFormat.id}::{t[1]}({args})\n"
+         codeObj.prepend_all(comment)
++        subset = None
++        positional_args = t[3][0] if t[3] else []
++        if len(positional_args) >= 2:
++            candidate = positional_args[1]
++            if isinstance(candidate, str) and candidate in (
++                "OPIVV", "OPFVV", "OPMVV", "OPIVI", "OPIVX",
++                "OPFVF", "OPMVX",
++            ):
++                subset = candidate
++        codeObj.tree_node = DecodeTreeNode(
++            kind="instruction", name=t[1], format=currentFormat.id, subset=subset
++        )
+         t[0] = codeObj
+ 
+     # Define an instruction using an explicitly specified format:
+@@ -1441,6 +1547,18 @@
+         codeObj = format.defineInst(self, t[3], t[5], t.lexer.lineno)
+         comment = f"\n// {t[1]}::{t[3]}({t[5]})\n"
+         codeObj.prepend_all(comment)
++        subset = None
++        positional_args = t[5][0] if t[5] else []
++        if len(positional_args) >= 2:
++            candidate = positional_args[1]
++            if isinstance(candidate, str) and candidate in (
++                "OPIVV", "OPFVV", "OPMVV", "OPIVI", "OPIVX",
++                "OPFVF", "OPMVX",
++            ):
++                subset = candidate
++        codeObj.tree_node = DecodeTreeNode(
++            kind="instruction", name=t[3], format=t[1], subset=subset
++        )
+         t[0] = codeObj
+ 
+     # The arg list generates a tuple, where the first element is a
