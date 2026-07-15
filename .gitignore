@@ -59,3 +59,4 @@ rr_investigate_*/
 spike_trace.json
 spike_commit.log
 *.gdb.log
+session-ses_*.md
