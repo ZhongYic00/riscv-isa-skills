@@ -125,171 +125,21 @@ BIT_RANGES = {
 }
 
 # ── operand fields per instruction format ────────────────────────────────
-# (field_name, msb, lsb)  — only standard positions, derived from RISC-V spec
-FMT_OPERANDS = {
-    # === scalar integer ===
-    # R-type: funct7 rs2 rs1 funct3 rd
-    "ROp":  [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20), ("funct7", 31, 25)],
-    # I-type: imm12 rs1 funct3 rd
-    # split imm12 to avoid overlap with decode-path fields (FS3 at 31:27)
-    "IOp":  [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-             ("imm_lo5", 24, 20), ("imm_mid2", 26, 25), ("imm_hi5", 31, 27)],
-    # U-type: imm20 rd
-    "UOp":  [("rd", 11, 7), ("imm20", 31, 12)],
-    # J-type: imm20 rd
-    "JOp":  [("rd", 11, 7), ("imm20", 31, 12)],
-    # Jump (JALR): imm12 rs1 funct3 rd
-    "Jump": [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15), ("imm12", 31, 20)],
-    # === load / store ===
-    "Load":  [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15), ("imm12", 31, 20)],
-    "Store": [("imm_lo", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-              ("rs2", 24, 20), ("imm_hi", 31, 25)],
-    # B-type: imm rs2 rs1 funct3 imm
-    "BOp":   [("funct3", 14, 12), ("rs1", 19, 15), ("rs2", 24, 20),
-              ("imm_hi", 31, 25), ("imm_lo", 11, 7)],
-    # === CSR / system ===
-    "CSROp":    [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15), ("csr", 31, 20)],
-    "SystemOp": [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15), ("funct12", 31, 20)],
-    "FenceOp":  [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("succ", 23, 20), ("pred", 27, 24)],
-    # === floating point ===
-    "FPROp": [("fd", 11, 7), ("funct3", 14, 12), ("fs1", 19, 15),
-              ("fs2", 24, 20), ("funct7", 31, 25)],
-    # === atomic ===
-    "AtomicMemOp":  [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                     ("rs2", 24, 20), ("rl", 25, 25), ("aq", 26, 26),
-                     ("amofunct", 31, 27)],
-    "LoadReserved": [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                     ("rl", 25, 25), ("aq", 26, 26), ("amofunct", 31, 27)],
-    "StoreCond":    [("rd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                     ("rs2", 24, 20), ("rl", 25, 25), ("aq", 26, 26),
-                     ("amofunct", 31, 27)],
-    # === hypervisor ===
-    "HyperLoad":  [("rd", 11, 7), ("rs1", 19, 15), ("imm12", 31, 20)],
-    "HyperStore": [("rs1", 19, 15), ("rs2", 24, 20)],
-    # === Zb* bit-manipulation ===
-    "BSOp":  [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20), ("funct7", 31, 25)],
-    "CBMOp": [("rd", 11, 7), ("rs1", 19, 15), ("rs2", 24, 20), ("funct7", 31, 25)],
-    # === M5 ===
+# Generated from riscv-unified-db via tools/gen_fmt_operands.py
+from _fmt_udb import FMT_OPERANDS as _FMT_UDB, INST_VARIABLES
+
+# Fallback for formats not in UDB
+_FALLBACK_FMT = {
     "M5Op": [],
-
-    # === compressed ===
-    "CIOp":         [("rd_rs1", 11, 7), ("imm_hi", 12, 12), ("imm_lo", 6, 2)],
-    "CJOp":         [("rd_rs1", 11, 7), ("imm", 12, 2)],
-    "CBOp":         [("rd_rs1", 11, 7), ("imm_hi", 12, 12), ("imm_lo", 6, 2)],
-    "CROp":         [("rd", 11, 7), ("rs2", 6, 2)],
-    "CJump":        [("imm", 12, 2)],
-    "CIAddi4spnOp": [("rd", 4, 2), ("rs1", 9, 7), ("imm", 12, 5)],
-    "CompressedLoad":  [("rd", 4, 2), ("rs1", 9, 7), ("offset", 12, 5)],
-    "CompressedStore": [("rs1", 9, 7), ("rs2", 4, 2), ("offset", 12, 5)],
-    "CompressedROp":   [("rd", 4, 2), ("rs1", 9, 7), ("rs2", 4, 2)],
-    # Zcm*
-    "CmJalt":    [],
-    "CmMva01s":  [],
-    "CmMvsa01":  [],
-    "CmPop":     [("rd", 11, 7)],
-    "CmPush":    [],
-
-    # === vector arithmetic ===
-    # Common layout: funct6 vm vs2 vs1 funct3 vd (+ optional sub-fields)
-    "VectorIntFormat":   [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                          ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatFormat": [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                          ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorIntMaskFormat":     [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                                ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatMaskFormat":   [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                                ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorIntWideningFormat": [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                                ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorIntNarrowingFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatWideningFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                                 ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatNarrowingCvtFormat": [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                      ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatCvtFormat":  [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorIntVxsatFormat":  [("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorMaskFormat":      [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorNonSplitFormat":  [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VMvWholeFormat":        [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorIntExtFormat":    [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "ViotaFormat":           [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "Vector1Vs1RdMaskFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "Vector1Vs1VdMaskFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                              ("vm", 25, 25), ("vfunct6", 31, 26)],
-    # vector reduce (no vs1)
-    "VectorReduceIntFormat":        [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                     ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorReduceIntWideningFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                     ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorReduceFloatFormat":      [("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                     ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorReduceFloatWideningFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                      ("vm", 25, 25), ("vfunct6", 31, 26)],
-    # vector gather (uses vs1)
-    "VectorGatherFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                          ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    # vector compress
-    "VectorCompressFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs1", 19, 15),
-                            ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    # vector slide (rs1 / simm variants)
-    "VectorSlideUpFormat":   [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorSlideDownFormat": [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorSlideUpVIFormat": [("vd", 11, 7), ("funct3", 14, 12), ("simm", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorSlideDownVIFormat":[("vd", 11, 7), ("funct3", 14, 12), ("simm", 19, 15),
-                               ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorSlide1UpFormat":  [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorSlide1DownFormat":[("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                              ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatSlideUpFormat":   [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                                   ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatSlideDownFormat": [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                                   ("vs2", 24, 20), ("vm", 25, 25), ("vfunct6", 31, 26)],
-    "VectorFloatWideningCvtFormat":[("vd", 11, 7), ("funct3", 14, 12), ("vs2", 24, 20),
-                                    ("vm", 25, 25), ("vfunct6", 31, 26)],
-    # === vector memory ===
-    # Unit-stride: nf mop vm vs2 rs1 funct3 vd (or vs3 for stores)
-    "VleOp":    [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("lumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VlmOp":    [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("lumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VlSegOp":  [("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("lumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VlWholeOp":[("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("lumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VlIndexOp":[("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("vs2", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VlStrideOp":[("vd", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                  ("vs2", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VseOp":    [("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("sumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VsmOp":    [("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("sumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VsSegOp":  [("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("sumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VsWholeOp":[("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("sumop", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VsIndexOp":[("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                 ("vs2", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    "VsStrideOp":[("vs3", 11, 7), ("funct3", 14, 12), ("rs1", 19, 15),
-                  ("vs2", 24, 20), ("vm", 25, 25), ("mop", 27, 26), ("nf", 31, 29)],
-    # === vector config ===
-    "VConfOp": [("rd", 11, 7), ("rs1", 19, 15),
-                ("zimm", 29, 20), ("vlmul", 34, 32), ("vsew", 37, 35)],
 }
+
+def _get_fmt_operands(fmt, inst_name):
+    """Resolve fields: per-instruction > format-level > fallback."""
+    if inst_name in INST_VARIABLES:
+        return INST_VARIABLES[inst_name]
+    if fmt in _FMT_UDB:
+        return _FMT_UDB[fmt]
+    return _FALLBACK_FMT.get(fmt, [])
 
 
 def extract_field(inst, field):
@@ -475,9 +325,10 @@ def format_instruction_binary(inst_32, field_trace, result, info=None):
                 fail_label = fld
                 break
 
-    # Add format-specific operand fields (from FMT_OPERANDS)
+    # Add format-specific operand fields (from UDB-generated db)
     fmt = result.get("format", "") or (info or {}).get("format", "")
-    for fld, fmsb, flsb in FMT_OPERANDS.get(fmt, []):
+    inst_name = result.get("name", "")
+    for fld, fmsb, flsb in _get_fmt_operands(fmt, inst_name):
         if all(msb > fmsb or lsb < flsb for msb, lsb in shown):
             w = fmsb - flsb + 1
             raw = (bits >> flsb) & ((1 << w) - 1)
